@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:  
+    tad.gitops.set/image: ".spec.template.spec.containers[0].image"
+    tad.gitops.get/image: ".spec.template.spec.containers[0].image"
+    tad.gitops.set/replicas: ".spec.replicas"
+    tad.gitops.get/replicas: ".spec.replicas" 
+  labels: 
+    app.kubernetes.io/instance: codegen-0610-vllm
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name:  codegen-0610-vllm
+    app.kubernetes.io/part-of: codegen-0610-vllm  
+  name: codegen-0610-vllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance:  codegen-0610-vllm 
+  template:
+    metadata: 
+      labels:
+        app.kubernetes.io/instance:  codegen-0610-vllm
+    spec:
+      containers:
+      - env:
+        - name: MODEL_ENDPOINT
+          value: http://0.0.0.0:8001
+        - name: MODEL_NAME
+          value: "Nondzu/Mistral-7B-code-16k-qlora"
+        image:  quay.io/yangcao/codegen:latest
+        name: app-inference
+        ports:
+        - containerPort: 8501
+        securityContext:
+          runAsNonRoot: true
+      - image: quay.io/rh-aiservices-bu/vllm-openai-ubi9:0.4.2
+        args: [
+            "--model",
+            "Nondzu/Mistral-7B-code-16k-qlora",
+            "--port",
+            "8001",
+            "--download-dir",
+            "/models-cache",
+            "--max-model-len",
+            "6144"]
+        resources:
+          limits:
+            nvidia.com/gpu: '1'
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: models-cache
+          mountPath: /models-cache
+        name: app-model-service
+        ports:
+        - containerPort: 8001
+        securityContext:
+          runAsNonRoot: true
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "2Gi"
+      - name: models-cache
+        persistentVolumeClaim:
+          claimName: codegen-0610-vllm
+
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
